@@ -19,7 +19,7 @@ type ctxKey string
 
 const userIDCtxKey ctxKey = "user_id"
 
-func SetupMiddleware(r chi.Router, jwtSecret string) {
+func SetupMiddleware(r chi.Router, jwtSecret []byte) {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
@@ -28,7 +28,7 @@ func SetupMiddleware(r chi.Router, jwtSecret string) {
 
 // JWTAuthMiddleware проверяет заголовок Authorization: Bearer <jwt>
 // Валидирует подпись HS256 и кладёт subject (sub) в контекст как user_id.
-func JWTAuthMiddleware(secret string) func(next http.Handler) http.Handler {
+func JWTAuthMiddleware(secret []byte) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			auth := r.Header.Get("Authorization")
@@ -56,7 +56,7 @@ func JWTAuthMiddleware(secret string) func(next http.Handler) http.Handler {
 }
 
 // validateAndExtractSubHS256 валидирует JWT (header.payload.signature) HS256 и возвращает sub.
-func validateAndExtractSubHS256(token, secret string) (string, error) {
+func validateAndExtractSubHS256(token string, secret []byte) (string, error) {
 	segments := strings.Split(token, ".")
 	if len(segments) != 3 {
 		return "", errors.New("bad token segments")

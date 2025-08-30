@@ -4,7 +4,7 @@ POSTGRES_PASSWORD ?= app
 POSTGRES_DB ?= microtube
 DB_URL ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/$(POSTGRES_DB)?sslmode=disable
 
-.PHONY: up down logs psql db-shell redis-cli migrate-up migrate-down migrate-new
+.PHONY: up down logs psql db-shell redis-cli migrate-up migrate-down migrate-new docker-up docker-down docker-build docker-logs
 
 up: ## старт БД и Редиса
 	docker compose up -d db redis
@@ -39,4 +39,40 @@ seed: ## прогнать сидер (можно VIDEOS=... EVENTS=...)
 
 run: ## запустить API локально
 	export $(shell grep -v '^#' .env | xargs) && go run ./cmd/api
+
+# Docker Compose команды
+docker-up: ## запустить все сервисы через Docker Compose
+	docker compose up -d
+
+docker-down: ## остановить все сервисы Docker Compose
+	docker compose down
+
+docker-build: ## пересобрать и запустить API
+	docker compose up -d --build api
+
+docker-seed: ## запустить только seed
+	docker compose up seed
+
+docker-reseed: ## перезапустить seed с пересборкой
+	docker compose up --build seed
+
+docker-logs: ## логи всех сервисов Docker Compose
+	docker compose logs -f --tail=200
+
+docker-api-logs: ## логи только API сервиса
+	docker compose logs -f --tail=200 api
+
+docker-seed-logs: ## логи только seed сервиса
+	docker compose logs -f --tail=200 seed
+
+# Тестирование
+test: ## запустить все тесты
+	go test ./... -v
+
+test-http: ## запустить тесты HTTP handlers
+	go test ./internal/http/... -v
+
+test-coverage: ## запустить тесты с покрытием
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
 

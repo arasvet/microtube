@@ -53,6 +53,8 @@ func (h *EventsHandler) postEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		uid = u
 	}
+	// Если user_id пустой, оставляем uuid.Nil
+
 	var vid uuid.UUID
 	if in.VideoID != "" {
 		v, err := uuid.Parse(in.VideoID)
@@ -62,6 +64,7 @@ func (h *EventsHandler) postEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		vid = v
 	}
+	// Если video_id пустой, оставляем uuid.Nil
 
 	e := domain.Event{
 		EventID:   evID,

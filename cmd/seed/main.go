@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"os"
@@ -54,11 +56,14 @@ func main() {
 	fmt.Println("==> seeding users")
 	for i := 0; i < 10; i++ {
 		email := fmt.Sprintf("user%d@example.com", i)
-		_, err := pool.Exec(ctx, `
+		password := "password123" // простой пароль для демо
+		hash := sha256.Sum256([]byte(password))
+		hashStr := hex.EncodeToString(hash[:])
+		_, err = pool.Exec(ctx, `
 			INSERT INTO app.users (id, email, pass_hash, created_at)
 			VALUES ($1, $2, $3, now())
 			ON CONFLICT (email) DO NOTHING`,
-			uuid.New(), email, "hashed_password")
+			uuid.New(), email, hashStr)
 		if err != nil {
 			panic(err)
 		}

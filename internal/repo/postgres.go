@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/arasvet/microtube/internal/domain"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -33,11 +34,20 @@ func (r *PostgresRepo) Begin(ctx context.Context) (Tx, error) {
 }
 
 func (r *PostgresRepo) InsertEvent(ctx context.Context, tx Tx, e domain.Event) (bool, error) {
+	// Обрабатываем uuid.Nil как NULL
+	var userID, videoID interface{}
+	if e.UserID != uuid.Nil {
+		userID = e.UserID
+	}
+	if e.VideoID != uuid.Nil {
+		videoID = e.VideoID
+	}
+
 	cmd, err := tx.(*PostgresTx).tx.Exec(ctx, `
 		INSERT INTO app.events(event_id, ts, type, session_id, user_id, video_id, query, dwell_ms)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (event_id) DO NOTHING
-	`, e.EventID, e.TS.UTC(), e.Type, e.SessionID, e.UserID, e.VideoID, e.Query, e.DwellMs)
+	`, e.EventID, e.TS.UTC(), e.Type, e.SessionID, userID, videoID, e.Query, e.DwellMs)
 	if err != nil {
 		return false, err
 	}

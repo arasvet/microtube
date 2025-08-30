@@ -45,7 +45,7 @@ func TestSearchHandler_SearchVideos(t *testing.T) {
 			name:           "отсутствует обязательный параметр q",
 			query:          "",
 			expectedStatus: http.StatusBadRequest,
-			expectedBody:   "параметр 'q' обязателен\n",
+			expectedBody:   "parameter 'q' is required\n",
 		},
 		{
 			name:           "неверный limit",

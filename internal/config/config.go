@@ -21,7 +21,7 @@ type Config struct {
 
 	APIHttpPort string
 
-	JWTSecret string
+	JWTSecret []byte
 	AuthTTL   time.Duration
 }
 
@@ -50,7 +50,7 @@ func MustLoad() Config {
 
 		APIHttpPort: getEnv("API_HTTP_PORT", "8080"),
 
-		JWTSecret: getEnv("JWT_SECRET", "devsecret"),
+		JWTSecret: []byte(getEnv("JWT_SECRET", "devsecret")),
 		AuthTTL:   authTTL,
 	}
 }

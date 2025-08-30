@@ -59,7 +59,7 @@ func TestRecommendationsHandler_GetRecommendations(t *testing.T) {
 			sessionID:      "",
 			limit:          "20",
 			expectedStatus: http.StatusInternalServerError,
-			expectedType:   "",
+			expectedType:   "mixed",
 			expectedLimit:  20,
 		},
 		{

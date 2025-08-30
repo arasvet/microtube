@@ -1,167 +1,388 @@
+# MicroTube - Микросервис для рекомендаций видео
 
----
+Микросервис для сбора событий пользователей, поиска видео и персонализированных рекомендаций.
 
-## Быстрый старт: запуск и проверка с нуля
+## 🚀 Быстрый старт (Docker Compose)
 
-Требования:
-- Docker, Docker Compose
-- Go 1.22+
-- jq (для удобного вывода)
+### Требования
 
-1) Клонирование
+- Docker Desktop
+- Docker Compose
+- `jq` для форматирования JSON (опционально)
+- `python3` для извлечения user_id из JWT (опционально)
+
+**Установка дополнительных инструментов:**
+
+```bash
+# macOS
+brew install jq
+
+# Ubuntu/Debian
+sudo apt-get install jq python3
+
+# CentOS/RHEL
+sudo yum install jq python3
+```
+
+### Пошаговая инструкция
+
+1. **Клонирование репозитория**
+
 ```bash
 git clone https://github.com/arasvet/microtube.git
 cd microtube
 ```
 
-2) Поднять инфраструктуру
+2. **Запуск всех сервисов**
+
 ```bash
-docker compose up -d db redis
+make docker-up
 ```
 
-3) Миграции (если не применились из init)
+3. **Проверка статуса**
+
 ```bash
-docker exec -i microtube-db psql -U app -d microtube < migrations/sql/0001_init.up.sql
-docker exec -i microtube-db psql -U app -d microtube < migrations/sql/0002_fts_indexes.up.sql
-docker exec -i microtube-db psql -U app -d microtube < migrations/sql/0003_videos_fts_trigger.up.sql
+make docker-logs
 ```
 
-4) Сид данных (≥1000 видео, ≥50k событий)
-```bash
-export POSTGRES_USER=app POSTGRES_PASSWORD=app POSTGRES_DB=microtube POSTGRES_HOST=localhost POSTGRES_PORT=5432
-go run ./cmd/seed
+4. **Открытие Swagger UI в браузере**
+
+```
+http://localhost:8080/docs
 ```
 
-5) Запуск API
-```bash
-export API_HTTP_PORT=8080
-export JWT_SECRET=devsecret
-# пока без админов
-env | grep ^ADMINS >/dev/null || export ADMINS=
+**Что происходит при запуске:**
 
-go build ./cmd/api && ./api
+- PostgreSQL и Redis запускаются
+- Автоматически выполняется seed данных (1200 видео, 50000 событий)
+- API сервер запускается после успешного seed
+- Swagger UI становится доступен для тестирования
+
+## 📊 Проверка работоспособности
+
+### 1. Health Check
+
+```bash
+curl http://localhost:8080/healthz
 ```
 
-### Проверка ручек (curl)
+**Ожидаемый ответ:** `{"status":"ok"}`
 
-Health и OpenAPI:
+### 2. Проверка Swagger UI
+
+Откройте в браузере: http://localhost:8080/docs
+
+Вы должны увидеть:
+
+- Полную документацию API
+- Все доступные эндпоинты
+- Возможность тестировать API прямо из браузера
+
+### 3. Проверка OpenAPI спецификации
+
 ```bash
-curl -s http://localhost:8080/healthz
-curl -s http://localhost:8080/openapi.yaml | head -20
+curl http://localhost:8080/openapi.yaml
 ```
 
-Регистрация и логин:
+**Ожидаемый ответ:** YAML файл с OpenAPI спецификацией
+
+## 🔧 Доступные команды Make
+
 ```bash
-# регистрация (409 при повторе — email уже существует)
-curl -i -s -X POST http://localhost:8080/auth/register \
+# Основные команды
+make docker-up          # Запустить все сервисы
+make docker-down        # Остановить все сервисы
+make docker-build       # Пересобрать и запустить API
+make docker-logs        # Логи всех сервисов
+make docker-api-logs    # Логи только API
+make docker-seed        # Запустить только seed
+make docker-reseed      # Перезапустить seed с пересборкой
+
+# Тестирование
+make test               # Запустить все тесты
+make test-http          # Запустить тесты HTTP handlers
+make test-coverage      # Запустить тесты с покрытием
+```
+
+## 🧪 Тестирование
+
+### Запуск тестов
+
+```bash
+# Все тесты
+make test
+
+# Только HTTP handlers
+make test-http
+
+# Тесты с покрытием
+make test-coverage
+```
+
+### Покрытие тестами
+
+Проект включает тесты для:
+
+- **HTTP Handlers** - тестирование всех API эндпоинтов
+- **Mock объекты** - изолированное тестирование бизнес-логики
+- **Edge cases** - проверка граничных случаев и ошибок
+
+## 🧪 Тестирование API
+
+### Полное тестирование API
+
+Вот полный набор команд для тестирования всех возможностей API:
+
+#### 1. Регистрация и авторизация
+
+```bash
+# Регистрация пользователя
+curl -i -X POST http://localhost:8080/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"pass"}'
+  -d '{"email":"admin@example.com","password":"password123"}'
 
-# логин
-LOGIN=$(curl -s -X POST http://localhost:8080/auth/login \
+# Логин и получение токена
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"pass"}')
+  -d '{"email":"admin@example.com","password":"password123"}')
 
-echo "$LOGIN" | jq .
-TOKEN=$(echo "$LOGIN" | jq -r .token)
+echo "$LOGIN_RESPONSE" | jq .
+TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r .token)
 echo "TOKEN: ${#TOKEN} chars"
 ```
 
-Получить user_id (sub) из JWT:
+#### 2. Извлечение user_id из JWT
+
 ```bash
-USER_ID=$(python3 - <<'PY'
-import os,base64,json
-tok=os.environ.get('TOKEN','')
-parts=tok.split('.')
-payload=parts[1] + '='*((4-len(parts[1])%4)%4)
+USER_ID=$(python3 -c "
+import base64, json
+parts = '$TOKEN'.split('.')
+payload = parts[1] + '=' * ((4 - len(parts[1]) % 4) % 4)
 print(json.loads(base64.urlsafe_b64decode(payload))['sub'])
-PY
-)
+")
 echo "USER_ID=$USER_ID"
 ```
 
-События (идемпотентность):
+#### 3. Тестирование событий (идемпотентность)
+
 ```bash
-# невалидное тело -> 422
-curl -i -s -X POST http://localhost:8080/events -H 'Content-Type: application/json' -d '{}'
+# Получить ID видео из базы
+VIDEO_ID=$(docker compose exec db psql -U app -d microtube -t -c "select id from app.videos limit 1" | tr -d '[:space:]')
+echo "VIDEO_ID: $VIDEO_ID"
 
-# валидное событие
-NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-VID=$(docker exec -i microtube-db psql -U app -d microtube -t -c "select id from app.videos limit 1" | tr -d '[:space:]')
-EID=$(uuidgen)
-
-curl -i -s -X POST http://localhost:8080/events -H 'Content-Type: application/json' -d "{
-  \"event_id\":\"$EID\",
-  \"ts\":\"$NOW\",
-  \"type\":\"view_start\",
-  \"session_id\":\"sess-1\",
-  \"video_id\":\"$VID\"
-}"
-
-# повтор тем же event_id -> 200
-curl -i -s -X POST http://localhost:8080/events -H 'Content-Type: application/json' -d "{
-  \"event_id\":\"$EID\",
-  \"ts\":\"$NOW\",
-  \"type\":\"view_start\",
-  \"session_id\":\"sess-1\",
-  \"video_id\":\"$VID\"
-}"
+# Отправить событие
+curl -i -X POST http://localhost:8080/events \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"event_id\": \"test-event-$(date +%s)\",
+    \"ts\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+    \"type\": \"view_start\",
+    \"session_id\": \"sess-1\",
+    \"video_id\": \"$VIDEO_ID\"
+  }"
 ```
 
-Поиск (FTS + trigram):
+#### 4. Тестирование поиска
+
 ```bash
+# Поиск по ключевому слову
 curl -s "http://localhost:8080/search?q=go&limit=5" | jq '.results[0:3]'
+
+# Поиск с пагинацией
+curl -s "http://localhost:8080/search?q=test&limit=3&offset=0" | jq '.total,.limit,.offset'
 ```
 
-Фиды:
+#### 5. Тестирование фидов
+
 ```bash
-curl -s "http://localhost:8080/videos/feed?type=popular&limit=5"   | jq '.videos[0:3]'
+# Популярные видео
+curl -s "http://localhost:8080/videos/feed?type=popular&limit=5" | jq '.videos[0:3]'
+
+# Комментируемые видео
 curl -s "http://localhost:8080/videos/feed?type=commented&limit=3" | jq '.videos[0:3]'
-curl -s "http://localhost:8080/videos/feed?type=random&limit=3"    | jq '.videos[0:3]'
+
+# Случайные видео
+curl -s "http://localhost:8080/videos/feed?type=random&limit=3" | jq '.videos[0:3]'
 ```
 
-Рекомендации:
+#### 6. Тестирование рекомендаций
+
 ```bash
-# холодные (гость)
+# Холодные рекомендации (для гостей)
 curl -s "http://localhost:8080/recommendations?session_id=test-session&limit=5" | jq '.type,.total'
-# персональные
+
+# Персональные рекомендации (для авторизованных)
 curl -s "http://localhost:8080/recommendations?user_id=$USER_ID&limit=5" | jq '.type,.total'
 ```
 
-Статистика (только админы):
+#### 7. Тестирование статистики (только для админов)
+
 ```bash
-# без авторизации -> 403
-curl -i -s "http://localhost:8080/stats/overview?top=3" | head -5
-# с токеном, но ещё не админ -> 403
-curl -i -s "http://localhost:8080/stats/overview?top=3" -H "Authorization: Bearer $TOKEN" | head -5
+# Без авторизации -> 403
+curl -i "http://localhost:8080/stats/overview?top=3" | head -5
+
+# С JWT токеном
+curl -s "http://localhost:8080/stats/overview?top=3" \
+  -H "Authorization: Bearer $TOKEN" | jq .
 ```
 
-Сделать пользователя админом и перезапустить API:
+### События (идемпотентность)
+
 ```bash
-# в окне сервера Ctrl+C и:
-export API_HTTP_PORT=8080 JWT_SECRET=devsecret ADMINS=$USER_ID
-go build ./cmd/api && ./api
+# Невалидное тело -> 422
+curl -i -X POST http://localhost:8080/events \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+
+# Валидное событие
+curl -i -X POST http://localhost:8080/events \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "event_id": "test-event-123",
+    "ts": "2024-01-01T12:00:00Z",
+    "type": "view_start",
+    "session_id": "sess-1",
+    "video_id": "550e8400-e29b-41d4-a716-446655440000"
+  }'
 ```
 
-Проверка /stats/overview с правами:
+### Статистика (только для админов)
+
 ```bash
-# вариант 1 — JWT
-curl -s "http://localhost:8080/stats/overview?top=3" -H "Authorization: Bearer $TOKEN" | jq .
-# вариант 2 — упрощённый: Bearer <user_id>
-curl -s "http://localhost:8080/stats/overview?top=3" -H "Authorization: Bearer $USER_ID" | jq .
+# Без авторизации -> 403
+curl -i "http://localhost:8080/stats/overview?top=3"
+
+# С JWT токеном (замените TOKEN на полученный)
+curl -i "http://localhost:8080/stats/overview?top=3" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-Проверка FTS-триггера:
+### Получение user_id из JWT
+
 ```bash
-docker exec -i microtube-db psql -U app -d microtube -c "
+# После логина получите TOKEN и извлеките user_id
+TOKEN="ваш_jwt_токен_здесь"
+USER_ID=$(python3 -c "
+import base64, json
+parts = '$TOKEN'.split('.')
+payload = parts[1] + '=' * ((4 - len(parts[1]) % 4) % 4)
+print(json.loads(base64.urlsafe_b64decode(payload))['sub'])
+")
+echo "USER_ID=$USER_ID"
+```
+
+### Проверка FTS-триггера
+
+```bash
+# Проверить, что FTS работает корректно
+docker compose exec db psql -U app -d microtube -c "
 INSERT INTO app.videos(id,title,description,lang,tags,duration_s,uploaded_at)
 VALUES (gen_random_uuid(),'FTS Trigger Check','Some text','en','{test}',10,now());
 SELECT fts_tsv IS NOT NULL as has_fts FROM app.videos WHERE title='FTS Trigger Check';
 "
 ```
 
-### Авторизация
-- Допустимые форматы заголовка:
-  - Authorization: Bearer <JWT> (HS256, секрет `JWT_SECRET`)
-  - Authorization: Bearer <user_id> (строка без точек)
-- Для доступа к `/stats/overview` добавьте `user_id` в `ADMINS` и перезапустите API.
+## 🗄️ Структура базы данных
+
+После seed в базе данных будет:
+
+- **1200 видео** с тегами, описаниями и метаданными
+- **50000 событий** различных типов (просмотры, лайки, поиски)
+- **10 тестовых пользователей** для демонстрации
+
+## 🔍 Основные возможности
+
+### Поиск (Full-Text Search)
+
+- Поиск по названию и описанию видео
+- Поддержка русского и английского языков
+- Триграмный поиск для опечаток
+
+### Рекомендации
+
+- Холодные рекомендации для новых пользователей
+- Персональные рекомендации на основе истории
+- Гибридный подход с машинным обучением
+
+### Аналитика
+
+- Сбор событий пользователей
+- Статистика просмотров и взаимодействий
+- Административная панель для аналитики
+
+## 🐛 Устранение неполадок
+
+### Seed не выполняется
+
+```bash
+# Проверить логи seed
+make docker-seed-logs
+
+# Перезапустить seed
+make docker-reseed
+```
+
+### API не отвечает
+
+```bash
+# Проверить статус контейнеров
+docker compose ps
+
+# Проверить логи API
+make docker-api-logs
+```
+
+### База данных недоступна
+
+```bash
+# Проверить здоровье PostgreSQL
+docker compose exec db pg_isready -U app -d microtube
+```
+
+## 📁 Структура проекта
+
+```
+microtube/
+├── cmd/
+│   ├── api/          # Основной API сервер
+│   └── seed/         # Скрипт заполнения тестовыми данными
+├── internal/
+│   ├── config/       # Конфигурация
+│   ├── domain/       # Доменные модели
+│   ├── http/         # HTTP handlers и роутинг
+│   ├── repo/         # Репозитории для работы с БД
+│   └── usecase/      # Бизнес-логика
+├── migrations/        # Миграции базы данных
+├── scripts/          # Вспомогательные скрипты
+├── docker-compose.yml # Конфигурация Docker Compose
+├── Dockerfile        # Dockerfile для API
+├── Dockerfile.seed   # Dockerfile для seed
+└── Makefile          # Команды для управления
+```
+
+## 🌟 Особенности реализации
+
+- **Идемпотентность событий** - повторная отправка события не создает дубли
+- **JWT аутентификация** - безопасная авторизация пользователей
+- **Graceful shutdown** - корректное завершение работы сервера
+- **Health checks** - мониторинг состояния сервисов
+- **Swagger UI** - интерактивная документация API
+- **Docker Compose** - простое развертывание всех компонентов
+
+## 📞 Поддержка
+
+Если у вас возникли вопросы или проблемы:
+
+1. Проверьте логи: `make docker-logs`
+2. Убедитесь, что все контейнеры запущены: `docker compose ps`
+3. Проверьте, что порт 8080 свободен
+4. Убедитесь, что Docker Desktop запущен
+
+## 🎯 Что демонстрирует проект
+
+- **Архитектура микросервисов** с четким разделением ответственности
+- **Работа с PostgreSQL** (миграции, FTS, триггеры)
+- **Redis** для кеширования и идемпотентности
+- **REST API** с полной документацией
+- **Docker** для контейнеризации и развертывания
+- **Go** как современный язык для backend разработки

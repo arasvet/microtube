@@ -2,7 +2,10 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -30,10 +33,10 @@ var (
 type AuthUC struct {
 	cfg    config.Config
 	store  repo.Store
-	secret string
+	secret []byte
 }
 
-func NewAuthUC(cfg config.Config, store repo.Store, secret string) *AuthUC {
+func NewAuthUC(cfg config.Config, store repo.Store, secret []byte) *AuthUC {
 	return &AuthUC{
 		cfg:    cfg,
 		store:  store,
@@ -60,14 +63,36 @@ func (uc *AuthUC) Login(ctx context.Context, email, password string) (string, er
 	if err != nil {
 		return "", ErrInvalidCredentials
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+
+	// Проверяем пароль - поддерживаем как bcrypt, так и sha256
+	if !uc.checkPassword(hash, password) {
 		return "", ErrInvalidCredentials
 	}
+
 	return uc.issueJWT(id, uc.cfg.AuthTTL)
 }
 
+// checkPassword проверяет пароль, поддерживая bcrypt и sha256 хеши
+func (uc *AuthUC) checkPassword(hash, password string) bool {
+	// Сначала пробуем bcrypt
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil {
+		return true
+	}
+
+	// Если bcrypt не сработал, пробуем sha256
+	if strings.HasPrefix(hash, "$2a$") || strings.HasPrefix(hash, "$2b$") || strings.HasPrefix(hash, "$2y$") {
+		// Это bcrypt хеш, но проверка не прошла
+		return false
+	}
+
+	// Проверяем как sha256 хеш
+	expectedHash := sha256.Sum256([]byte(password))
+	expectedHashStr := hex.EncodeToString(expectedHash[:])
+	return hash == expectedHashStr
+}
+
 func (uc *AuthUC) issueJWT(sub string, ttl time.Duration) (string, error) {
-	if uc.secret == "" {
+	if len(uc.secret) == 0 {
 		return "", ErrSecretNotSet
 	}
 

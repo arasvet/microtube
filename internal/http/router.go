@@ -14,10 +14,18 @@ import (
 )
 
 func SetupRoutes(r chi.Router, repos *repo.Repositories, cfg config.Config) {
+	// Корневая страница - перенаправление на документацию
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs", http.StatusMovedPermanently)
+	})
+
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, map[string]string{"status": "ok"}) })
 
 	// OpenAPI статика из embed
 	r.Get("/openapi.yaml", serveOpenAPI)
+
+	// Swagger UI для просмотра API документации
+	r.Get("/docs", serveSwaggerUI)
 
 	// init
 	authUC := usecase.NewAuthUC(cfg, repos.Postgres, cfg.JWTSecret)
